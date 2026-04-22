@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>模拟考试系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<div id="loginPage" class="login-container">
+    <h2>📋 模拟考试系统</h2>
+    <p>输入任意账号开始使用</p>
+    <input type="text" id="loginUsername" placeholder="请输入账号" autofocus>
+    <button onclick="handleLogin()">进入系统</button>
+</div>
+
+<div id="mainApp" class="main-app">
+    <!-- 正常模式下的头部 -->
+    <div id="normalHeader">
+        <div class="card login-bar">
+            <h2>📋 模拟考试系统</h2>
+            <div class="user-area">
+                <span id="usernameDisplay" style="font-weight:500;"></span>
+                <button class="btn" onclick="handleLogout()">登出</button>
+            </div>
+        </div>
+
+        <div class="tabs" id="mainTabs">
+            <div class="tab active" data-tab="exam" onclick="switchTab('exam')">📝 考试</div>
+            <div class="tab" data-tab="history" onclick="switchTab('history')">📊 考试记录</div>
+            <div class="tab" data-tab="admin" onclick="switchTab('admin')">⚙️ 试题管理</div>
+        </div>
+    </div>
+
+    <!-- 考试模式下的简化头部 -->
+    <div id="examHeader" style="display: none;">
+        <div class="card login-bar">
+            <h2>📝 考试中</h2>
+            <div class="user-area">
+                <span id="examUsernameDisplay" style="font-weight:500;"></span>
+                <button class="btn btn-warning" onclick="exitExam(true)">退出考试</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 考试面板 -->
+    <div id="examPanel" class="card">
+        <div id="examSettings" class="flex" style="margin-bottom: 20px;">
+            <select id="subjectSelectExam"></select>
+            <select id="examMode" onchange="onModeChange()">
+                <option value="all">全量考题</option>
+                <option value="random">随机数量</option>
+                <option value="wrong">错题集</option>
+                <option value="new">未考过题</option>
+            </select>
+            <input type="number" id="randomCount" placeholder="数量" value="10" min="1" style="width:100px;">
+            <button class="btn btn-success" onclick="startExam()">开始考试</button>
+        </div>
+        <div id="examArea"></div>
+    </div>
+
+    <!-- 考试记录面板 -->
+    <div id="historyPanel" class="card hidden">
+        <h3 style="margin-bottom: 20px;">📊 考试记录</h3>
+        <div id="historyList"></div>
+        <div id="historyDetail" style="display: none;"></div>
+    </div>
+
+    <!-- 管理面板 -->
+    <div id="adminPanel" class="card hidden">
+        <h3 style="margin-bottom: 20px;">📤 导入试题 (TXT)</h3>
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div class="subject-selector">
+                <select id="subjectSelectUpload" onchange="onSubjectSelectChange()">
+                    <option value="">-- 选择已有科目 --</option>
+                </select>
+                <span class="or-divider">或</span>
+                <input type="text" id="newSubjectName" placeholder="输入新科目名称" oninput="onNewSubjectInput()">
+            </div>
+
+            <div class="flex">
+                <input type="file" id="questionFile" accept=".txt">
+                <button class="btn btn-primary" onclick="uploadQuestions('append')">追加导入</button>
+                <button class="btn btn-warning" onclick="uploadQuestions('overwrite')">覆盖导入</button>
+            </div>
+
+            <p style="color:#64748b; font-size:13px; margin:0;">
+                💡 追加导入：保留原有试题，新增试题<br>
+                ⚠️ 覆盖导入：清空原有试题和错题记录，重新导入
+            </p>
+        </div>
+        <div id="uploadMsg"></div>
+
+        <hr>
+
+        <h3 style="margin-bottom: 20px;">📚 已有科目</h3>
+        <div id="subjectList" class="subject-grid"></div>
+    </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+</body>
+</html>
