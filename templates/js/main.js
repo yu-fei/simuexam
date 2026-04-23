@@ -22,13 +22,48 @@ window.onload = async () => {
         document.getElementById('usernameDisplay').innerText = `👤 ${res.username}`;
         document.getElementById('examUsernameDisplay').innerText = `👤 ${res.username}`;
         await loadSubjects();
-        await checkInProgressExam();
+        
+        // 如果直接访问 #exam-mode，自动恢复考试
+        const hash = window.location.hash.slice(1);
+        if (hash === 'exam-mode') {
+            const examRes = await api('/api/exam/in_progress');
+            if (examRes.success && examRes.session) {
+                await resumeExam(examRes.session.id);
+            } else {
+                // 如果没有进行中的考试，跳回考试设置页面
+                window.location.hash = 'exam';
+                handleHashChange();
+            }
+        } else {
+            handleHashChange();
+        }
     } else {
         document.getElementById('loginPage').style.display = 'block';
         document.getElementById('mainApp').style.display = 'none';
     }
     onModeChange();
 };
+
+// 监听滚动事件，保存滚动位置
+window.addEventListener('scroll', () => {
+    if (isExamMode) {
+        localStorage.setItem('examScrollPosition', window.scrollY.toString());
+    }
+});
+
+window.addEventListener('hashchange', handleHashChange);
+
+function handleHashChange() {
+    const hash = window.location.hash.slice(1) || 'exam';
+
+    if (isExamMode || hash === 'exam-mode') return;
+
+    if (hash === 'exam' || hash === 'history' || hash === 'admin') {
+        switchTab(hash);
+    } else if (hash === 'exam') {
+        switchTab('exam');
+    }
+}
 
 async function api(url, method = 'GET', data = null) {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -38,52 +73,59 @@ async function api(url, method = 'GET', data = null) {
 }
 
 async function checkInProgressExam() {
-    const res = await api('/api/exam/in_progress');
-    if (res.success && res.session) {
-        const session = res.session;
-        const shouldResume = confirm(
-            `检测到您有一场未完成的考试：\n` +
-            `科目：${session.subject_name}\n` +
-            `进度：${session.answered_count}/${session.total_questions} 题\n\n` +
-            `是否继续考试？\n` +
-            `点击"确定"继续考试，点击"取消"放弃考试。`
-        );
-
-        if (shouldResume) {
-            await resumeExam(session.id);
-        } else {
-            await api('/api/exam/abandon', 'POST', { session_id: session.id });
+    try {
+        const res = await api('/api/exam/in_progress');
+        console.log('checkInProgressExam:', res);
+        if (res.success && res.session) {
+            // 只有在考试模式下才自动恢复考试
+            // 这样点击考试标签时显示设置页面，刷新时也不会强制进入考试
+            // 只有从历史记录点击继续考试时才进入考试模式
         }
+    } catch (error) {
+        console.error('checkInProgressExam error:', error);
     }
 }
 
 async function resumeExam(sessionId) {
-    const res = await api('/api/exam/restore', 'POST', { session_id: sessionId });
-    if (!res.success) {
-        alert(res.message);
-        return;
+    try {
+        const res = await api('/api/exam/restore', 'POST', { session_id: sessionId });
+        console.log('resumeExam:', res);
+        if (!res.success) {
+            console.error('resumeExam failed:', res.message);
+            return;
+        }
+
+        currentQuestions = res.questions;
+        userAnswers = {};
+        answeredStatus = {};
+        answerResults = {};
+
+        res.answered_details.forEach(d => {
+            userAnswers[d.question_id] = d.user_answer;
+            answeredStatus[d.question_id] = true;
+            answerResults[d.question_id] = {
+                correct: d.is_correct,
+                correctAnswer: res.questions.find(q => q.id === d.question_id)?.correct_answer || null
+            };
+        });
+
+        currentPage = res.current_page || 1;
+        examSubjectId = res.subject_id;
+        currentSessionId = sessionId;
+
+        enterExamMode(res.subject_name);
+        renderExam();
+        
+        // 恢复滚动位置
+        const scrollPosition = localStorage.getItem('examScrollPosition');
+        if (scrollPosition) {
+            setTimeout(() => {
+                window.scrollTo(0, parseInt(scrollPosition));
+            }, 100);
+        }
+    } catch (error) {
+        console.error('resumeExam error:', error);
     }
-
-    currentQuestions = res.questions;
-    userAnswers = {};
-    answeredStatus = {};
-    answerResults = {};
-
-    res.answered_details.forEach(d => {
-        userAnswers[d.question_id] = d.user_answer;
-        answeredStatus[d.question_id] = true;
-        answerResults[d.question_id] = {
-            correct: d.is_correct,
-            correctAnswer: res.questions.find(q => q.id === d.question_id)?.correct_answer || null
-        };
-    });
-
-    currentPage = 1;
-    examSubjectId = res.subject_id;
-    currentSessionId = sessionId;
-
-    enterExamMode(res.subject_name);
-    renderExam();
 }
 
 function onModeChange() {
@@ -94,12 +136,21 @@ function onModeChange() {
 
 function onSubjectSelectChange() {
     const select = document.getElementById('subjectSelectUpload');
-    if (select.value) document.getElementById('newSubjectName').value = '';
+    if (select.value) {
+        document.getElementById('newSubjectName').value = '';
+        loadSubjectQuestions(select.value);
+    }
 }
 
 function onNewSubjectInput() {
     const input = document.getElementById('newSubjectName');
-    if (input.value.trim()) document.getElementById('subjectSelectUpload').value = '';
+    if (input.value.trim()) {
+        document.getElementById('subjectSelectUpload').value = '';
+        const container = document.getElementById('questionListContainer');
+        if (container) container.style.display = 'none';
+        const btn = document.querySelector('[id^="toggleQuestionList"]');
+        if (btn) btn.innerText = '查看试题列表';
+    }
 }
 
 function getSelectedSubjectName() {
@@ -121,7 +172,7 @@ async function handleLogin() {
         document.getElementById('usernameDisplay').innerText = `👤 ${res.username}`;
         document.getElementById('examUsernameDisplay').innerText = `👤 ${res.username}`;
         await loadSubjects();
-        await checkInProgressExam();
+        handleHashChange();
         onModeChange();
     } else alert(res.message);
 }
@@ -132,6 +183,7 @@ async function handleLogout() {
     document.getElementById('loginPage').style.display = 'block';
     document.getElementById('mainApp').style.display = 'none';
     document.getElementById('loginUsername').value = '';
+    window.location.hash = '';
 }
 
 function switchTab(tabId) {
@@ -153,6 +205,8 @@ function switchTab(tabId) {
     } else {
         document.getElementById('examSettings').style.display = 'flex';
     }
+
+    window.location.hash = tabId;
 }
 
 async function loadSubjects() {
@@ -172,6 +226,7 @@ async function loadSubjects() {
         const item = document.createElement('div');
         item.className = 'subject-item';
         item.innerHTML = `<span class="subject-name">${s.name}</span><span class="subject-count">${s.question_count}题</span>
+            <button class="btn btn-sm" onclick="toggleQuestionList(${s.id}, this)">查看试题列表</button>
             <button class="btn btn-danger btn-sm" onclick="deleteSubject(${s.id}, '${s.name}')">删除</button>`;
         listDiv.appendChild(item);
     });
@@ -212,25 +267,15 @@ async function uploadQuestions(mode) {
 }
 
 function enterExamMode(subjectName) {
-    console.log('enterExamMode called, subjectName:', subjectName);
-
     isExamMode = true;
     examSubjectName = subjectName;
+    window.location.hash = 'exam-mode';
 
-    // 隐藏正常头部，显示考试头部
     document.getElementById('normalHeader').style.display = 'none';
     document.getElementById('examHeader').style.display = 'block';
-
-    // 隐藏考试设置区域
     document.getElementById('examSettings').style.display = 'none';
-
-    // 确保考试面板可见
     document.getElementById('examPanel').classList.remove('hidden');
-
-    // 添加考试模式类
     document.getElementById('mainApp').classList.add('exam-mode');
-
-    console.log('enterExamMode completed');
 }
 
 function exitExam(showConfirm = true) {
@@ -252,6 +297,8 @@ function exitExam(showConfirm = true) {
     currentPage = 1;
     currentSessionId = null;
 
+    window.location.hash = 'exam';
+
     document.getElementById('normalHeader').style.display = 'block';
     document.getElementById('examHeader').style.display = 'none';
     document.getElementById('examSettings').style.display = 'flex';
@@ -263,6 +310,8 @@ function exitExam(showConfirm = true) {
     document.getElementById('examPanel').classList.remove('hidden');
     document.getElementById('historyPanel').classList.add('hidden');
     document.getElementById('adminPanel').classList.add('hidden');
+
+    window.location.hash = 'exam';
 }
 
 async function startExam() {
@@ -333,6 +382,9 @@ function goToPage(page) {
     if (page < 1 || page > totalPages) return;
     saveCurrentPageAnswers();
     currentPage = page;
+    if (currentSessionId) {
+        saveExamPage(currentSessionId, currentPage);
+    }
     renderExamContent();
     document.getElementById('examArea').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -379,6 +431,11 @@ function renderExamContent() {
         html += `<div class="question-box" id="question-${q.id}"><strong style="font-size:16px;">${questionNumber}. ${q.content}</strong>`;
         if (isAnswered) html += ` <span style="color:#0f7b4e; font-size:13px; margin-left:8px;">✓ 已答</span>`;
 
+        html += `<div style="margin-top:8px;">
+            <button class="btn btn-sm" onclick="editQuestionInExam(${q.id})">编辑</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteQuestionInExam(${q.id})">删除</button>
+        </div>`;
+
         if (q.type === 'judge') {
             html += `<div style="margin-top:16px;">
                 <label class="option"><input type="radio" name="q${q.id}" value="正确" onchange="recordAnswer(${q.id}, '正确')" ${savedAnswer === '正确' ? 'checked' : ''} ${disabledAttr}> 正确</label>
@@ -415,40 +472,6 @@ window.handleOptionChange = (qid, val, type) => {
     }
 };
 
-async function submitAnswer(qid) {
-    const ans = userAnswers[qid] || '';
-    if (!ans) return alert('请先选择答案');
-    const res = await api('/api/exam/submit_answer', 'POST', { question_id: qid, answer: ans });
-    const span = document.getElementById(`result-${qid}`);
-
-    answeredStatus[qid] = true;
-    answerResults[qid] = { correct: res.is_correct, correctAnswer: res.correct_answer };
-
-    if (res.is_correct) {
-        span.innerHTML = '<span style="color:#0f7b4e; font-weight:500;">✅ 正确</span>';
-    } else {
-        span.innerHTML = `<span style="color:#dc2626; font-weight:500;">❌ 错误 (正确答案: ${res.correct_answer})</span>`;
-    }
-
-    updateStats();
-
-    const questionBox = document.querySelector(`#question-${qid}`);
-    if (questionBox) {
-        const titleEl = questionBox.querySelector('strong');
-        if (titleEl && !titleEl.innerHTML.includes('✓ 已答')) {
-            titleEl.innerHTML += ' <span style="color:#0f7b4e; font-size:13px; margin-left:8px;">✓ 已答</span>';
-        }
-        const inputs = questionBox.querySelectorAll('input');
-        inputs.forEach(input => input.disabled = true);
-        const submitBtn = questionBox.querySelector('button');
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.style.opacity = '0.5';
-            submitBtn.style.cursor = 'not-allowed';
-        }
-    }
-}
-
 function updateStats() {
     const statsDiv = document.querySelector('.exam-stats');
     if (statsDiv) {
@@ -482,192 +505,4 @@ async function finishExam() {
     }
     alert(`考试完成！\n共 ${currentQuestions.length} 题，已答 ${totalAnswered} 题，答对 ${correctCount} 题`);
     exitExam(false);
-}
-
-// ==================== 考试记录功能 ====================
-
-async function loadHistoryList() {
-    const historyDiv = document.getElementById('historyList');
-    const detailDiv = document.getElementById('historyDetail');
-    historyDiv.style.display = 'block';
-    detailDiv.style.display = 'none';
-    detailDiv.innerHTML = '';
-
-    const res = await api('/api/exam/sessions');
-    if (!res.success) { historyDiv.innerHTML = '<p class="empty-state">加载失败</p>'; return; }
-    const sessions = res.sessions;
-    if (sessions.length === 0) {
-        historyDiv.innerHTML = '<div class="empty-state"><p>📭 暂无考试记录</p><p style="font-size:14px; margin-top:8px;">完成考试后记录会显示在这里</p></div>';
-        return;
-    }
-
-    let html = '<div class="history-list">';
-    sessions.forEach(s => {
-        const date = s.start_time;
-        const modeText = { 'all': '全量考题', 'random': '随机数量', 'wrong': '错题集', 'new': '未考过题', 'custom': '自定义' }[s.exam_mode] || s.exam_mode;
-        const isInProgress = s.status === 'in_progress';
-
-        html += `<div class="history-item" onclick="viewSessionDetail(${s.id})">
-            <div class="history-info">
-                <div class="history-title">
-                    ${s.subject_name} · ${modeText}
-                    ${isInProgress ? '<span style="background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:20px; font-size:12px; margin-left:8px;">进行中</span>' : ''}
-                </div>
-                <div class="history-meta"><span>📅 ${date}</span><span>📝 ${s.answered_count}/${s.total_questions} 题</span><span>✅ 答对 ${s.correct_count} 题</span></div>
-            </div>
-            <div class="history-stats">
-                ${isInProgress ? 
-                    `<button class="btn btn-success btn-sm" onclick="event.stopPropagation(); resumeExam(${s.id})">继续考试</button>` :
-                    `<div class="history-score ${s.correct_count > 0 ? 'correct' : ''}"><div class="score-number">${s.correct_count}/${s.answered_count}</div><div class="history-accuracy">正确率 ${s.accuracy}%</div></div>`
-                }
-                <button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deleteSession(${s.id})">删除</button>
-            </div>
-        </div>`;
-    });
-    html += '</div>';
-    historyDiv.innerHTML = html;
-}
-
-async function deleteSession(sessionId) {
-    if (!confirm('确定要删除这条考试记录吗？')) return;
-    const res = await api(`/api/exam/sessions/${sessionId}`, 'DELETE');
-    if (res.success) loadHistoryList(); else alert('删除失败');
-}
-
-async function viewSessionDetail(sessionId) {
-    const res = await api(`/api/exam/sessions/${sessionId}`);
-    if (!res.success) { alert(res.message); return; }
-
-    const session = res.session;
-    const historyDiv = document.getElementById('historyList');
-    const detailDiv = document.getElementById('historyDetail');
-    historyDiv.style.display = 'none';
-    detailDiv.style.display = 'block';
-
-    const date = session.start_time;
-    const modeText = { 'all': '全量考题', 'random': '随机数量', 'wrong': '错题集', 'new': '未考过题', 'custom': '自定义' }[session.exam_mode] || session.exam_mode;
-    const wrongCount = session.wrong_count;
-    const unansweredCount = session.unanswered_count;
-
-    let html = `
-        <div class="back-btn"><button class="btn btn-sm" onclick="backToHistoryList()">← 返回列表</button></div>
-        <div style="margin-bottom: 20px;"><h3 style="margin-bottom: 8px;">${session.subject_name} · ${modeText}</h3>
-        <div style="color: #64748b; font-size: 14px;">📅 ${date} | 📝 本次考试 ${session.total_questions} 题</div></div>
-        <div class="stat-cards">
-            <div class="stat-card"><div class="stat-label">已答题数</div><div class="stat-value">${session.answered_count}</div></div>
-            <div class="stat-card green"><div class="stat-label">答对数</div><div class="stat-value">${session.correct_count}</div></div>
-            <div class="stat-card red"><div class="stat-label">答错数</div><div class="stat-value">${wrongCount}</div></div>
-            <div class="stat-card yellow"><div class="stat-label">未答数</div><div class="stat-value">${unansweredCount}</div></div>
-            <div class="stat-card blue"><div class="stat-label">正确率</div><div class="stat-value">${session.accuracy}%</div></div>
-        </div>
-        <div class="retake-buttons">
-            <button class="btn btn-primary" onclick="retakeExam(${session.subject_id}, '${session.subject_name}', 'all', ${sessionId})">📝 再考一次（全量）</button>
-            <button class="btn btn-warning" onclick="retakeExam(${session.subject_id}, '${session.subject_name}', 'wrong', ${sessionId})" ${wrongCount === 0 ? 'disabled' : ''}>❌ 只考错题 (${wrongCount}题)</button>
-            <button class="btn btn-info" onclick="retakeExam(${session.subject_id}, '${session.subject_name}', 'unanswered', ${sessionId})" ${unansweredCount === 0 ? 'disabled' : ''}>📋 只考未答题 (${unansweredCount}题)</button>
-            <button class="btn btn-success" onclick="retakeExam(${session.subject_id}, '${session.subject_name}', 'wrong_unanswered', ${sessionId})" ${(wrongCount + unansweredCount) === 0 ? 'disabled' : ''}>🔄 错题+未答题 (${wrongCount + unansweredCount}题)</button>
-        </div>
-        <div class="filter-bar">
-            <label>筛选：</label>
-            <select id="detailFilter" onchange="filterDetailQuestions()">
-                <option value="all">全部题目</option>
-                <option value="wrong">只看错题</option>
-                <option value="correct">只看正确</option>
-                <option value="unanswered">只看未答</option>
-            </select>
-            <span style="margin-left: auto; color: #64748b;" id="filterCount"></span>
-        </div>
-        <div id="detailQuestionsContainer"></div>
-    `;
-    detailDiv.innerHTML = html;
-    window.currentDetailQuestions = session.questions;
-    window.currentSessionData = session;
-    renderDetailQuestions('all');
-}
-
-async function retakeExam(subjectId, subjectName, retakeMode, sessionId) {
-    if (!currentUser) return alert('请先登录');
-    const res = await api(`/api/exam/sessions/${sessionId}`);
-    if (!res.success) { alert('获取考试记录失败'); return; }
-
-    const session = res.session;
-    const questions = session.questions;
-    let questionIds = [];
-
-    if (retakeMode === 'all') questionIds = questions.map(q => q.id);
-    else if (retakeMode === 'wrong') questionIds = questions.filter(q => q.answered && !q.is_correct).map(q => q.id);
-    else if (retakeMode === 'unanswered') questionIds = questions.filter(q => !q.answered).map(q => q.id);
-    else if (retakeMode === 'wrong_unanswered') questionIds = questions.filter(q => !q.answered || (q.answered && !q.is_correct)).map(q => q.id);
-
-    if (questionIds.length === 0) { alert('没有可考的题目'); return; }
-
-    const examRes = await api('/api/exam/start_custom', 'POST', { subject_id: subjectId, question_ids: questionIds });
-    if (!examRes.success) { alert(examRes.message); return; }
-    if (examRes.questions.length === 0) { alert('没有可考的题目'); return; }
-
-    currentQuestions = examRes.questions;
-    userAnswers = {};
-    answeredStatus = {};
-    answerResults = {};
-    currentPage = 1;
-    examSubjectId = subjectId;
-    currentSessionId = examRes.session_id;
-    document.getElementById('historyDetail').style.display = 'none';
-    document.getElementById('historyDetail').innerHTML = '';
-    enterExamMode(subjectName);
-    renderExam();
-}
-
-function backToHistoryList() {
-    document.getElementById('historyList').style.display = 'block';
-    document.getElementById('historyDetail').style.display = 'none';
-    document.getElementById('historyDetail').innerHTML = '';
-}
-
-function filterDetailQuestions() {
-    const filter = document.getElementById('detailFilter').value;
-    renderDetailQuestions(filter);
-}
-
-function renderDetailQuestions(filter) {
-    const questions = window.currentDetailQuestions || [];
-    const container = document.getElementById('detailQuestionsContainer');
-    let filteredQuestions = questions;
-
-    if (filter === 'wrong') filteredQuestions = questions.filter(q => q.answered && !q.is_correct);
-    else if (filter === 'correct') filteredQuestions = questions.filter(q => q.answered && q.is_correct);
-    else if (filter === 'unanswered') filteredQuestions = questions.filter(q => !q.answered);
-
-    document.getElementById('filterCount').innerText = `共 ${filteredQuestions.length} 题`;
-    if (filteredQuestions.length === 0) { container.innerHTML = '<div class="empty-state"><p>📭 没有符合条件的题目</p></div>'; return; }
-
-    let html = '';
-    filteredQuestions.forEach((q, idx) => {
-        const isAnswered = q.answered;
-        const isCorrect = q.is_correct;
-        let statusClass = '', statusText = '', statusColor = '';
-        if (isAnswered) {
-            statusClass = isCorrect ? 'correct-answer' : 'wrong-answer';
-            statusText = isCorrect ? '✅ 回答正确' : '❌ 回答错误';
-            statusColor = isCorrect ? 'correct' : 'wrong';
-        } else {
-            statusText = '⏳ 未作答';
-        }
-        html += `<div class="detail-question ${statusClass}"><div class="detail-header"><strong>${idx + 1}. ${q.content}</strong><span class="detail-status ${statusColor}">${statusText}</span></div>`;
-        if (q.options && q.options.length > 0) {
-            html += '<div style="margin: 12px 0;">';
-            q.options.forEach(opt => { html += `<div style="margin: 6px 0;">${opt}</div>`; });
-            html += '</div>';
-        } else if (q.question_type === 'judge') html += '<div style="margin: 12px 0;">正确 / 错误</div>';
-
-        html += `<div class="detail-answer">`;
-        if (isAnswered) {
-            html += `<div>你的答案：<span class="user-answer">${q.user_answer || ''}</span></div>`;
-            if (!isCorrect) html += `<div>正确答案：<span class="correct-answer">${q.correct_answer}</span></div>`;
-            html += `<div style="color: #94a3b8; font-size: 12px; margin-top: 8px;">提交时间：${q.submit_time || ''}</div>`;
-        } else {
-            html += `<div style="color: #94a3b8;">未作答</div><div>正确答案：<span class="correct-answer">${q.correct_answer}</span></div>`;
-        }
-        html += `</div></div>`;
-    });
-    container.innerHTML = html;
 }

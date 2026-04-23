@@ -5,9 +5,12 @@ import json
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory, session
 from werkzeug.utils import secure_filename
+from routes.question import question_bp
 
 app = Flask(__name__, static_folder='templates')
 app.secret_key = 'exam_system_secret_key_2026'
+
+app.register_blueprint(question_bp)
 
 # 数据库文件
 DB_PATH = 'exam_system.db'
@@ -200,6 +203,10 @@ def init_db():
         CURRENT_TIMESTAMP,
         end_time
         TIMESTAMP,
+        current_page
+        INTEGER
+        DEFAULT
+        1,
         status
         TEXT
         DEFAULT
@@ -207,7 +214,7 @@ def init_db():
         FOREIGN
         KEY
                  (
-        user_id
+                     user_id
                  ) REFERENCES users
                  (
                      id
@@ -225,6 +232,12 @@ def init_db():
     # 尝试添加 question_ids 字段（如果表已存在）
     try:
         c.execute('ALTER TABLE exam_sessions ADD COLUMN question_ids TEXT')
+    except sqlite3.OperationalError:
+        pass
+
+    # 尝试添加 current_page 字段（如果表已存在）
+    try:
+        c.execute('ALTER TABLE exam_sessions ADD COLUMN current_page INTEGER DEFAULT 1')
     except sqlite3.OperationalError:
         pass
 
@@ -310,7 +323,7 @@ def normalize_answer(answer):
 
 
 def parse_uploaded_txt(content):
-    """解析上传的TXT文件"""
+    """解析上传的TXT文件，支持题干换行和中文逗号选项"""
     questions = []
     lines = content.split('\n')
     i = 0
@@ -320,7 +333,7 @@ def parse_uploaded_txt(content):
             i += 1
             continue
 
-        match = re.match(r'^([A-Z\u0410-\u042f]+|正确|错误|对|错)[\t\s]+(.+)$', line)
+        match = re.match(r'^([A-Z\u0410-\u042f]+|正确|错误|对|错|✓|√|是|否|T|F|True|False)[\t\s]+(.+)$', line)
         if not match:
             i += 1
             continue
@@ -331,20 +344,29 @@ def parse_uploaded_txt(content):
             'Т', 'T')
         question_content = match.group(2).strip()
 
-        if answer_part in ['正确', '错误', '对', '错']:
+        j = i + 1
+        while j < len(lines):
+            next_line = lines[j].strip()
+            if not next_line:
+                j += 1
+                continue
+            if re.match(r'^([A-Z\u0410-\u042f]+|正确|错误|对|错|✓|√|是|否|T|F|True|False)[\t\s]+.+$', next_line):
+                break
+            if re.match(r'^[A-Z\u0410-\u042f]\s*[、.\s，]', next_line):
+                break
+            question_content += '\n' + next_line
+            j += 1
+
+        if answer_part in ['正确', '错误', '对', '错', '✓', '√', '是', '否', 'T', 'F', 'True', 'False']:
             q_type = 'judge'
             correct = normalize_answer(answer_part)
             options_json = json.dumps(['正确', '错误'], ensure_ascii=False)
-            i += 1
+            i = j
         else:
             q_type = 'multiple' if len(answer_part) > 1 else 'single'
             correct = answer_part.upper()
 
             options = []
-            j = i + 1
-            while j < len(lines) and not lines[j].strip():
-                j += 1
-
             while j < len(lines):
                 opt_line = lines[j].strip()
                 if not opt_line:
@@ -352,7 +374,7 @@ def parse_uploaded_txt(content):
                     continue
                 if re.match(r'^([A-Z\u0410-\u042f]+|正确|错误|对|错)[\t\s]+.+$', opt_line):
                     break
-                if re.match(r'^[A-Z\u0410-\u042f]\s*[、.\s]', opt_line):
+                if re.match(r'^[A-Z\u0410-\u042f]\s*[、.\s，]', opt_line):
                     opt_line = opt_line.replace('А', 'A').replace('В', 'B').replace('С', 'C').replace('Е', 'E').replace(
                         'М', 'M').replace('Т', 'T')
                     options.append(opt_line)
@@ -749,7 +771,8 @@ def get_in_progress_exam():
                                        answered_count,
                                        correct_count,
                                        start_time,
-                                       status
+                                       status,
+                                       current_page
                                 FROM exam_sessions
                                 WHERE user_id = ?
                                   AND status = 'in_progress'
@@ -791,14 +814,21 @@ def get_in_progress_exam():
     answer_results = {}
     for d in details:
         answered_map[d['question_id']] = d['user_answer']
+        # 先不设置 correct 值，后面根据最新的题目信息重新计算
         answer_results[d['question_id']] = {
-            'correct': bool(d['is_correct']),
+            'correct': False,
             'correctAnswer': None
         }
 
+    # 根据最新的题目信息重新计算答案的正确性
+    question_dict = {q['id']: q for q in exam_questions}
     for q in exam_questions:
         if q['id'] in answer_results:
             answer_results[q['id']]['correctAnswer'] = q['correct_answer']
+            # 重新计算正确性
+            user_answer = answered_map.get(q['id'])
+            if user_answer:
+                answer_results[q['id']]['correct'] = (user_answer == q['correct_answer'])
 
     result = dict(session_info)
     result.pop('question_ids', None)
@@ -827,7 +857,7 @@ def restore_exam():
     conn = get_db()
 
     session_info = conn.execute('''
-                                SELECT id, subject_id, subject_name, question_ids
+                                SELECT id, subject_id, subject_name, question_ids, current_page
                                 FROM exam_sessions
                                 WHERE id = ?
                                   AND user_id = ?
@@ -865,6 +895,17 @@ def restore_exam():
                            ''', (session_id,)).fetchall()
     conn.close()
 
+    # 根据最新的题目信息重新计算答案的正确性
+    question_dict = {q['id']: q for q in exam_questions}
+    updated_details = []
+    for d in details:
+        detail_dict = dict(d)
+        # 重新计算正确性
+        question = question_dict.get(detail_dict['question_id'])
+        if question and detail_dict['user_answer']:
+            detail_dict['is_correct'] = (detail_dict['user_answer'] == question['correct_answer'])
+        updated_details.append(detail_dict)
+
     session['exam_session_id'] = session_id
     session['exam_questions'] = question_ids
     session['exam_subject_id'] = session_info['subject_id']
@@ -875,8 +916,30 @@ def restore_exam():
         'subject_id': session_info['subject_id'],
         'subject_name': session_info['subject_name'],
         'questions': exam_questions,
-        'answered_details': [dict(d) for d in details]
+        'current_page': session_info['current_page'],
+        'answered_details': updated_details
     })
+
+
+@app.route('/api/exam/save_page', methods=['POST'])
+def save_exam_page():
+    """保存考试当前页码"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': '请先登录'})
+
+    data = request.json
+    session_id = data.get('session_id')
+    current_page = data.get('current_page', 1)
+
+    if not session_id:
+        return jsonify({'success': False, 'message': '缺少会话ID'})
+
+    conn = get_db()
+    conn.execute('UPDATE exam_sessions SET current_page = ? WHERE id = ?', (current_page, session_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
 
 
 @app.route('/api/exam/abandon', methods=['POST'])

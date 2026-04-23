@@ -96,9 +96,54 @@
 
         <h3 style="margin-bottom: 20px;">📚 已有科目</h3>
         <div id="subjectList" class="subject-grid"></div>
+        <div id="questionListContainer" class="question-list-container" style="display: none; margin-top: 16px;"></div>
+
+        <hr>
+
+        <h3 style="margin-bottom: 20px;">📝 新增题目</h3>
+        <div style="margin-top: 16px;">
+            <button class="btn btn-primary" onclick="showNewQuestionModal()">新增题目</button>
+        </div>
     </div>
 </div>
 
+<!-- 重新导入模态框 -->
+<div id="reimportModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3 id="reimportModalTitle">编辑题目</h3>
+            <span class="modal-close" onclick="closeReimportModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>请输入TXT格式内容</label>
+                <textarea id="reimportContent" rows="12" style="resize: vertical; min-height: 200px;" placeholder="格式示例：
+A 这是一道单选题?
+A、选项1
+B、选项2
+C、选项3
+D、选项4
+
+正确 这是一道判断题
+
+AB 这是一道多选题?
+A、选项1
+B、选项2
+C、选项3
+D、选项4"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="confirmReimport()">确定</button>
+            <button class="btn" onclick="closeReimportModal()">取消</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/admin.js"></script>
+<script src="/static/js/exam.js"></script>
+<script src="/static/js/history.js"></script>
 <script src="/static/js/main.js"></script>
 </body>
 </html>
