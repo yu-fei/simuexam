@@ -212,12 +212,25 @@ async function uploadQuestions(mode) {
 }
 
 function enterExamMode(subjectName) {
+    console.log('enterExamMode called, subjectName:', subjectName);
+
     isExamMode = true;
     examSubjectName = subjectName;
+
+    // 隐藏正常头部，显示考试头部
     document.getElementById('normalHeader').style.display = 'none';
     document.getElementById('examHeader').style.display = 'block';
+
+    // 隐藏考试设置区域
     document.getElementById('examSettings').style.display = 'none';
+
+    // 确保考试面板可见
+    document.getElementById('examPanel').classList.remove('hidden');
+
+    // 添加考试模式类
     document.getElementById('mainApp').classList.add('exam-mode');
+
+    console.log('enterExamMode completed');
 }
 
 function exitExam(showConfirm = true) {
