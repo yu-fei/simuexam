@@ -134,25 +134,6 @@ function onModeChange() {
     countInput.style.display = mode === 'random' ? 'inline-block' : 'none';
 }
 
-function onSubjectSelectChange() {
-    const select = document.getElementById('subjectSelectUpload');
-    if (select.value) {
-        document.getElementById('newSubjectName').value = '';
-        loadSubjectQuestions(select.value);
-    }
-}
-
-function onNewSubjectInput() {
-    const input = document.getElementById('newSubjectName');
-    if (input.value.trim()) {
-        document.getElementById('subjectSelectUpload').value = '';
-        const container = document.getElementById('questionListContainer');
-        if (container) container.style.display = 'none';
-        const btn = document.querySelector('[id^="toggleQuestionList"]');
-        if (btn) btn.innerText = '查看试题列表';
-    }
-}
-
 function getSelectedSubjectName() {
     const select = document.getElementById('subjectSelectUpload');
     const newName = document.getElementById('newSubjectName').value.trim();
@@ -226,7 +207,7 @@ async function loadSubjects() {
         const item = document.createElement('div');
         item.className = 'subject-item';
         item.innerHTML = `<span class="subject-name">${s.name}</span><span class="subject-count">${s.question_count}题</span>
-            <button class="btn btn-sm" onclick="toggleQuestionList(${s.id}, this)">查看试题列表</button>
+            <button class="btn btn-sm" onclick="loadSubjectQuestions(${s.id}, '${s.name}')">查看试题列表</button>
             <button class="btn btn-danger btn-sm" onclick="deleteSubject(${s.id}, '${s.name}')">删除</button>`;
         listDiv.appendChild(item);
     });

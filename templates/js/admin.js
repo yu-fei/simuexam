@@ -1,16 +1,34 @@
 let currentSubjectQuestions = [];
 let currentEditingQuestion = null;
+let currentViewingSubject = null;
+let currentPage = 1;
+const pageSize = 50;
 
-async function loadSubjectQuestions(subjectId) {
+async function loadSubjectQuestions(subjectId, subjectName) {
     const res = await getQuestionsBySubject(subjectId);
     if (res.success) {
         currentSubjectQuestions = res.questions;
-        renderQuestionList(subjectId);
+        currentViewingSubject = { id: subjectId, name: subjectName };
+        currentPage = 1;
+        showQuestionListPage(subjectName);
     }
 }
 
-function renderQuestionList(subjectId) {
-    const container = document.getElementById('questionListContainer');
+function showQuestionListPage(subjectName) {
+    document.getElementById('adminPanel').classList.add('hidden');
+    document.getElementById('questionListPanel').classList.remove('hidden');
+    document.getElementById('questionListTitle').innerText = `📚 ${subjectName} - 试题列表`;
+    renderQuestionList();
+}
+
+function backToAdmin() {
+    document.getElementById('questionListPanel').classList.add('hidden');
+    document.getElementById('adminPanel').classList.remove('hidden');
+    currentViewingSubject = null;
+}
+
+function renderQuestionList() {
+    const container = document.getElementById('questionListArea');
     if (!container) return;
 
     if (currentSubjectQuestions.length === 0) {
@@ -18,13 +36,19 @@ function renderQuestionList(subjectId) {
         return;
     }
 
+    const totalPages = Math.ceil(currentSubjectQuestions.length / pageSize);
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, currentSubjectQuestions.length);
+    const pageQuestions = currentSubjectQuestions.slice(startIndex, endIndex);
+
     let html = '<div class="question-list">';
-    currentSubjectQuestions.forEach((q, idx) => {
+    pageQuestions.forEach((q, idx) => {
         const typeLabel = q.question_type === 'judge' ? '判断' : (q.question_type === 'multiple' ? '多选' : '单选');
-        const typeClass = q.question_type === 'judge' ? 'type-judge' : (q.question_type === 'multiple' ? 'type-multi' : 'type-single');
+        const typeClass = q.question_type === 'judge' ? 'type-judge' : (q.question_type === 'multiple' ? 'type-multiple' : 'type-single');
+        const globalIndex = startIndex + idx + 1;
         html += `<div class="question-item">
             <div class="question-info">
-                <span class="question-num">${idx + 1}.</span>
+                <span class="question-num">${globalIndex}.</span>
                 <span class="question-type ${typeClass}">${typeLabel}</span>
                 <span class="question-content">${q.content.substring(0, 50)}${q.content.length > 50 ? '...' : ''}</span>
             </div>
@@ -35,7 +59,42 @@ function renderQuestionList(subjectId) {
         </div>`;
     });
     html += '</div>';
+    
+    // 添加分页控件
+    if (totalPages > 1) {
+        html += '<div class="pagination">';
+        html += `<span class="page-info">${startIndex + 1}-${endIndex} / 共 ${currentSubjectQuestions.length} 题</span>`;
+        html += `<button class="btn btn-sm" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹ 上一页</button>`;
+        
+        const maxVisible = 5;
+        let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+        let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+        if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
+        
+        if (startPage > 1) {
+            html += `<button class="btn btn-sm" onclick="goToPage(1)">1</button>`;
+            if (startPage > 2) html += '<span style="padding:0 4px;">...</span>';
+        }
+        for (let i = startPage; i <= endPage; i++) {
+            html += i === currentPage ? `<button class="btn btn-primary btn-sm" disabled>${i}</button>` : `<button class="btn btn-sm" onclick="goToPage(${i})">${i}</button>`;
+        }
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) html += '<span style="padding:0 4px;">...</span>';
+            html += `<button class="btn btn-sm" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+        }
+        
+        html += `<button class="btn btn-sm" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>下一页 ›</button>`;
+        html += '</div>';
+    }
+    
     container.innerHTML = html;
+}
+
+function goToPage(page) {
+    const totalPages = Math.ceil(currentSubjectQuestions.length / pageSize);
+    if (page < 1 || page > totalPages) return;
+    currentPage = page;
+    renderQuestionList();
 }
 
 function questionToTxt(question) {
@@ -106,12 +165,12 @@ async function confirmReimport() {
     } else if (currentEditingQuestion) {
         saveRes = await updateQuestion(currentEditingQuestion.id, data);
     } else {
-        const subjectId = document.getElementById('subjectSelectUpload').value;
-        if (!subjectId) {
+        // 使用当前查看的科目
+        if (!currentViewingSubject) {
             alert('请先选择科目');
             return;
         }
-        saveRes = await createQuestion({ subject_id: subjectId, ...data });
+        saveRes = await createQuestion({ subject_id: currentViewingSubject.id, ...data });
     }
 
     if (saveRes.success) {
@@ -143,9 +202,11 @@ async function confirmReimport() {
                 renderExamContent();
             }
         } else {
-            const subjectId = document.getElementById('subjectSelectUpload').value;
             closeReimportModal();
-            if (subjectId) loadSubjectQuestions(subjectId);
+            // 刷新当前科目列表
+            if (currentViewingSubject) {
+                loadSubjectQuestions(currentViewingSubject.id, currentViewingSubject.name);
+            }
         }
     } else {
         alert(saveRes.message || '操作失败');
@@ -158,21 +219,11 @@ async function removeQuestion(questionId) {
     const res = await deleteQuestion(questionId);
     if (res.success) {
         alert('题目已删除');
-        const subjectId = document.getElementById('subjectSelectUpload').value;
-        if (subjectId) loadSubjectQuestions(subjectId);
+        // 刷新当前科目列表
+        if (currentViewingSubject) {
+            loadSubjectQuestions(currentViewingSubject.id, currentViewingSubject.name);
+        }
     } else {
         alert(res.message || '删除失败');
-    }
-}
-
-function toggleQuestionList(subjectId, btn) {
-    const container = document.getElementById('questionListContainer');
-    if (container.style.display === 'none') {
-        loadSubjectQuestions(subjectId);
-        container.style.display = 'block';
-        btn.innerText = '收起试题列表';
-    } else {
-        container.style.display = 'none';
-        btn.innerText = '查看试题列表';
     }
 }

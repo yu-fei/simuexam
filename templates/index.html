@@ -72,11 +72,11 @@
         <h3 style="margin-bottom: 20px;">📤 导入试题 (TXT)</h3>
         <div style="display: flex; flex-direction: column; gap: 20px;">
             <div class="subject-selector">
-                <select id="subjectSelectUpload" onchange="onSubjectSelectChange()">
+                <select id="subjectSelectUpload">
                     <option value="">-- 选择已有科目 --</option>
                 </select>
                 <span class="or-divider">或</span>
-                <input type="text" id="newSubjectName" placeholder="输入新科目名称" oninput="onNewSubjectInput()">
+                <input type="text" id="newSubjectName" placeholder="输入新科目名称">
             </div>
 
             <div class="flex">
@@ -96,14 +96,18 @@
 
         <h3 style="margin-bottom: 20px;">📚 已有科目</h3>
         <div id="subjectList" class="subject-grid"></div>
-        <div id="questionListContainer" class="question-list-container" style="display: none; margin-top: 16px;"></div>
+    </div>
 
-        <hr>
-
-        <h3 style="margin-bottom: 20px;">📝 新增题目</h3>
-        <div style="margin-top: 16px;">
-            <button class="btn btn-primary" onclick="showNewQuestionModal()">新增题目</button>
+    <!-- 试题列表页面 -->
+    <div id="questionListPanel" class="card hidden">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 id="questionListTitle">试题列表</h3>
+            <div style="display: flex; gap: 12px;">
+                <button class="btn btn-primary" onclick="showNewQuestionModal()">新增题目</button>
+                <button class="btn" onclick="backToAdmin()">返回</button>
+            </div>
         </div>
+        <div id="questionListArea"></div>
     </div>
 </div>
 
