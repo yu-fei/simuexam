@@ -8,13 +8,23 @@ from flask import Flask, request, jsonify, send_from_directory, session
 from werkzeug.utils import secure_filename
 from routes.question import question_bp
 
+# 解析命令行参数
+parser = argparse.ArgumentParser(description='模拟考试系统')
+parser.add_argument('--db', type=str, default='exam_system.db', help='数据库文件路径')
+parser.add_argument('--port', type=int, default=8000, help='服务器端口')
+args = parser.parse_args()
+
 app = Flask(__name__, static_folder='templates')
 app.secret_key = 'exam_system_secret_key_2026'
 
 app.register_blueprint(question_bp)
 
 # 数据库文件
-DB_PATH = 'exam_system.db'
+DB_PATH = args.db
+
+# 更新services.question_service中的DB_PATH
+import services.question_service as qs_module
+qs_module.DB_PATH = DB_PATH
 
 # 上传文件夹
 UPLOAD_FOLDER = 'uploads'
@@ -1131,10 +1141,7 @@ def delete_exam_session(session_id):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='模拟考试系统')
-    parser.add_argument('--port', type=int, default=8000, help='服务器端口')
-    args = parser.parse_args()
-    
     print("✅ 模拟考试系统启动！")
     print(f"🌐 访问地址: http://127.0.0.1:{args.port}")
+    print(f"📦 数据库路径: {DB_PATH}")
     app.run(debug=True, host='0.0.0.0', port=args.port)

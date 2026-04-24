@@ -46,7 +46,13 @@ class Router {
     handleHashChange() {
         const hash = window.location.hash.slice(1) || 'exam';
         
-        if (isExamMode || hash === 'exam-mode') return;
+        if (isExamMode || hash === 'exam-mode') {
+            // 如果是考试模式，调用handleExamMode函数恢复考试状态
+            if (typeof handleExamMode === 'function') {
+                handleExamMode();
+            }
+            return;
+        }
 
         let route, params;
         if (hash.startsWith('view/')) {

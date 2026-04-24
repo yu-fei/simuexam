@@ -13,7 +13,7 @@ const pageSize = 50;
 let answeredStatus = {};
 let answerResults = {};
 
-let isExamMode = false;
+let isExamMode = window.location.hash === '#exam-mode';
 let examSubjectId = null;
 let examSubjectName = '';
 let currentSessionId = null;
@@ -297,6 +297,9 @@ function enterExamMode(subjectName) {
     document.getElementById('examHeader').style.display = 'block';
     document.getElementById('examSettings').style.display = 'none';
     document.getElementById('examPanel').classList.remove('hidden');
+    document.getElementById('historyPanel').classList.add('hidden');
+    document.getElementById('adminPanel').classList.add('hidden');
+    document.getElementById('questionListPanel').classList.add('hidden');
     document.getElementById('mainApp').classList.add('exam-mode');
 }
 

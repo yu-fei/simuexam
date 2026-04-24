@@ -19,8 +19,14 @@ class TestQuestionAPI:
         cursor = db.execute("SELECT COUNT(*) FROM subjects")
         before_count = cursor.fetchone()[0]
 
-        cursor = db.execute("INSERT INTO subjects (name) VALUES ('测试科目') RETURNING id")
-        subject_id = cursor.fetchone()[0]
+        cursor = db.execute("INSERT OR IGNORE INTO subjects (name) VALUES ('测试科目') RETURNING id")
+        result = cursor.fetchone()
+        if result:
+            subject_id = result[0]
+        else:
+            # 如果科目已存在，获取其ID
+            cursor = db.execute("SELECT id FROM subjects WHERE name = '测试科目'")
+            subject_id = cursor.fetchone()[0]
         db.commit()
 
         data = {
@@ -43,7 +49,12 @@ class TestQuestionAPI:
         cursor = db.execute("SELECT COUNT(*) FROM subjects")
         before_subjects = cursor.fetchone()[0]
 
-        cursor = db.execute("INSERT INTO subjects (name) VALUES ('测试科目2') RETURNING id")
+        # 使用随机科目名称，确保每次测试都使用新科目
+        import random
+        import string
+        subject_name = '测试科目' + ''.join(random.choices(string.ascii_letters + string.digits, k=5))
+
+        cursor = db.execute("INSERT INTO subjects (name) VALUES (?) RETURNING id", (subject_name,))
         subject_id = cursor.fetchone()[0]
         db.commit()
 
@@ -63,8 +74,14 @@ class TestQuestionAPI:
         assert len(questions) == 2
 
     def test_update_question(self, db):
-        cursor = db.execute("INSERT INTO subjects (name) VALUES ('测试科目3') RETURNING id")
-        subject_id = cursor.fetchone()[0]
+        cursor = db.execute("INSERT OR IGNORE INTO subjects (name) VALUES ('测试科目3') RETURNING id")
+        result = cursor.fetchone()
+        if result:
+            subject_id = result[0]
+        else:
+            # 如果科目已存在，获取其ID
+            cursor = db.execute("SELECT id FROM subjects WHERE name = '测试科目3'")
+            subject_id = cursor.fetchone()[0]
         db.commit()
 
         data = {
@@ -92,8 +109,14 @@ class TestQuestionAPI:
         assert question['correct_answer'] == 'AB'
 
     def test_delete_question_cleans_session_records(self, db):
-        cursor = db.execute("INSERT INTO subjects (name) VALUES ('测试科目4') RETURNING id")
-        subject_id = cursor.fetchone()[0]
+        cursor = db.execute("INSERT OR IGNORE INTO subjects (name) VALUES ('测试科目4') RETURNING id")
+        result = cursor.fetchone()
+        if result:
+            subject_id = result[0]
+        else:
+            # 如果科目已存在，获取其ID
+            cursor = db.execute("SELECT id FROM subjects WHERE name = '测试科目4'")
+            subject_id = cursor.fetchone()[0]
 
         cursor = db.execute("SELECT id FROM users WHERE username = 'test_user'")
         user_id = cursor.fetchone()[0]
@@ -109,9 +132,9 @@ class TestQuestionAPI:
         question_id = create_question(subject_id, data)
 
         cursor = db.execute("""
-            INSERT INTO exam_sessions (user_id, subject_id, question_ids, total_questions, status)
-            VALUES (?, ?, ?, ?, 'in_progress')
-        """, (user_id, subject_id, str([question_id]), 1))
+            INSERT INTO exam_sessions (user_id, subject_id, subject_name, question_ids, total_questions, status, exam_mode)
+            VALUES (?, ?, ?, ?, ?, 'in_progress', 'full')
+        """, (user_id, subject_id, '测试科目', str([question_id]), 1))
         session_id = cursor.lastrowid
         db.commit()
 
