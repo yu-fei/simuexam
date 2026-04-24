@@ -14,6 +14,7 @@ let answeredStatus = {};
 let answerResults = {};
 
 let isExamMode = window.location.hash === '#exam-mode';
+let examSourcePage = null;
 let examSubjectId = null;
 let examSubjectName = '';
 let currentSessionId = null;
@@ -53,7 +54,7 @@ window.onload = async () => {
 async function handleExamMode() {
     const examRes = await api('/api/exam/in_progress');
     if (examRes.success && examRes.session) {
-        await resumeExam(examRes.session.id);
+        await resumeExam(examRes.session.id, false);
     } else {
         window.location.hash = 'exam';
         handleHashChange();
@@ -115,7 +116,10 @@ async function checkInProgressExam() {
     }
 }
 
-async function resumeExam(sessionId) {
+async function resumeExam(sessionId, setSourcePage = true) {
+    if (setSourcePage) {
+        examSourcePage = 'history';
+    }
     try {
         const res = await api('/api/exam/restore', 'POST', { session_id: sessionId });
         console.log('resumeExam:', res);
@@ -258,7 +262,7 @@ async function loadSubjects() {
 async function deleteSubject(id, name) {
     if (!confirm(`确定要删除科目"${name}"及其所有试题吗？`)) return;
     const res = await api(`/api/subjects/${id}`, 'DELETE');
-    if (res.success) { alert('删除成功'); loadSubjects(); }
+    if (res.success) { loadSubjects(); }
     else alert('删除失败');
 }
 
@@ -339,7 +343,39 @@ function exitExam(showConfirm = true) {
     window.location.hash = 'exam';
 }
 
+async function pauseExam() {
+    await autoSubmitUnanswered();
+    
+    isExamMode = false;
+    
+    document.getElementById('normalHeader').style.display = 'block';
+    document.getElementById('examHeader').style.display = 'none';
+    document.getElementById('examSettings').style.display = 'none';
+    document.getElementById('examArea').innerHTML = '';
+    document.getElementById('mainApp').classList.remove('exam-mode');
+
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    
+    if (examSourcePage === 'history') {
+        document.querySelector('[data-tab="history"]').classList.add('active');
+        document.getElementById('examPanel').classList.add('hidden');
+        document.getElementById('historyPanel').classList.remove('hidden');
+        document.getElementById('adminPanel').classList.add('hidden');
+        loadHistoryList();
+        window.location.hash = 'history';
+    } else {
+        document.querySelector('[data-tab="exam"]').classList.add('active');
+        document.getElementById('examPanel').classList.remove('hidden');
+        document.getElementById('historyPanel').classList.add('hidden');
+        document.getElementById('adminPanel').classList.add('hidden');
+        window.location.hash = 'exam';
+    }
+    
+    examSourcePage = null;
+}
+
 async function startExam() {
+    examSourcePage = 'exam';
     if (!currentUser) return alert('请登录');
     const subjectSelect = document.getElementById('subjectSelectExam');
     const subjectId = subjectSelect.value;

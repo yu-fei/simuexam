@@ -1,0 +1,5 @@
+{
+    "db_path": ":memory:",
+    "port": 8001,
+    "debug": true
+}

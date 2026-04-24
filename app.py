@@ -7,24 +7,27 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory, session
 from werkzeug.utils import secure_filename
 from routes.question import question_bp
+from config import Config
 
 # 解析命令行参数
 parser = argparse.ArgumentParser(description='模拟考试系统')
-parser.add_argument('--db', type=str, default='exam_system.db', help='数据库文件路径')
-parser.add_argument('--port', type=int, default=8000, help='服务器端口')
+parser.add_argument('config_file', type=str, help='配置文件路径')
 args = parser.parse_args()
+
+# 加载配置
+config = Config(args.config_file)
 
 app = Flask(__name__, static_folder='templates')
 app.secret_key = 'exam_system_secret_key_2026'
 
 app.register_blueprint(question_bp)
 
-# 数据库文件
-DB_PATH = args.db
-
-# 更新services.question_service中的DB_PATH
+# 初始化 services.question_service
 import services.question_service as qs_module
-qs_module.DB_PATH = DB_PATH
+qs_module.init(config)
+
+# 创建别名，让 app.py 中的 get_db() 调用 qs_module.get_db()
+get_db = qs_module.get_db
 
 # 上传文件夹
 UPLOAD_FOLDER = 'uploads'
@@ -35,277 +38,15 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs('templates', exist_ok=True)
 
 
-# ------------------ 数据库初始化 ------------------
+# ------------------ 辅助函数 ------------------
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-
-    # 科目表
-    c.execute('''CREATE TABLE IF NOT EXISTS subjects
-                 (
-                     id
-                     INTEGER
-                     PRIMARY
-                     KEY
-                     AUTOINCREMENT,
-                     name
-                     TEXT
-                     UNIQUE
-                     NOT
-                     NULL,
-                     created_at
-                     TIMESTAMP
-                     DEFAULT
-                     CURRENT_TIMESTAMP
-                 )''')
-
-    # 试题表
-    c.execute('''CREATE TABLE IF NOT EXISTS questions
-    (
-        id
-        INTEGER
-        PRIMARY
-        KEY
-        AUTOINCREMENT,
-        subject_id
-        INTEGER
-        NOT
-        NULL,
-        question_type
-        TEXT
-        NOT
-        NULL,
-        content
-        TEXT
-        NOT
-        NULL,
-        options
-        TEXT,
-        correct_answer
-        TEXT
-        NOT
-        NULL,
-        explanation
-        TEXT,
-        FOREIGN
-        KEY
-                 (
-        subject_id
-                 ) REFERENCES subjects
-                 (
-                     id
-                 ) ON DELETE CASCADE
-        )''')
-
-    # 用户表
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (
-                     id
-                     INTEGER
-                     PRIMARY
-                     KEY
-                     AUTOINCREMENT,
-                     username
-                     TEXT
-                     UNIQUE
-                     NOT
-                     NULL,
-                     created_at
-                     TIMESTAMP
-                     DEFAULT
-                     CURRENT_TIMESTAMP
-                 )''')
-
-    # 答题记录表
-    c.execute('''CREATE TABLE IF NOT EXISTS exam_records
-    (
-        id
-        INTEGER
-        PRIMARY
-        KEY
-        AUTOINCREMENT,
-        user_id
-        INTEGER
-        NOT
-        NULL,
-        subject_id
-        INTEGER
-        NOT
-        NULL,
-        question_id
-        INTEGER
-        NOT
-        NULL,
-        user_answer
-        TEXT,
-        is_correct
-        INTEGER,
-        exam_time
-        TIMESTAMP
-        DEFAULT
-        CURRENT_TIMESTAMP,
-        FOREIGN
-        KEY
-                 (
-        user_id
-                 ) REFERENCES users
-                 (
-                     id
-                 ) ON DELETE CASCADE,
-        FOREIGN KEY
-                 (
-                     subject_id
-                 ) REFERENCES subjects
-                 (
-                     id
-                 )
-                   ON DELETE CASCADE,
-        FOREIGN KEY
-                 (
-                     question_id
-                 ) REFERENCES questions
-                 (
-                     id
-                 )
-                   ON DELETE CASCADE
-        )''')
-
-    # 考试会话表
-    c.execute('''CREATE TABLE IF NOT EXISTS exam_sessions
-    (
-        id
-        INTEGER
-        PRIMARY
-        KEY
-        AUTOINCREMENT,
-        user_id
-        INTEGER
-        NOT
-        NULL,
-        subject_id
-        INTEGER
-        NOT
-        NULL,
-        subject_name
-        TEXT
-        NOT
-        NULL,
-        exam_mode
-        TEXT
-        NOT
-        NULL,
-        total_questions
-        INTEGER
-        NOT
-        NULL,
-        question_ids
-        TEXT,
-        answered_count
-        INTEGER
-        DEFAULT
-        0,
-        correct_count
-        INTEGER
-        DEFAULT
-        0,
-        start_time
-        TIMESTAMP
-        DEFAULT
-        CURRENT_TIMESTAMP,
-        end_time
-        TIMESTAMP,
-        current_page
-        INTEGER
-        DEFAULT
-        1,
-        status
-        TEXT
-        DEFAULT
-        'in_progress',
-        FOREIGN
-        KEY
-                 (
-                     user_id
-                 ) REFERENCES users
-                 (
-                     id
-                 ) ON DELETE CASCADE,
-        FOREIGN KEY
-                 (
-                     subject_id
-                 ) REFERENCES subjects
-                 (
-                     id
-                 )
-                   ON DELETE CASCADE
-        )''')
-
-    # 尝试添加 question_ids 字段（如果表已存在）
-    try:
-        c.execute('ALTER TABLE exam_sessions ADD COLUMN question_ids TEXT')
-    except sqlite3.OperationalError:
-        pass
-
-    # 尝试添加 current_page 字段（如果表已存在）
-    try:
-        c.execute('ALTER TABLE exam_sessions ADD COLUMN current_page INTEGER DEFAULT 1')
-    except sqlite3.OperationalError:
-        pass
-
-    # 考试答题详情表
-    c.execute('''CREATE TABLE IF NOT EXISTS exam_session_details
-    (
-        id
-        INTEGER
-        PRIMARY
-        KEY
-        AUTOINCREMENT,
-        session_id
-        INTEGER
-        NOT
-        NULL,
-        question_id
-        INTEGER
-        NOT
-        NULL,
-        user_answer
-        TEXT,
-        is_correct
-        INTEGER,
-        submit_time
-        TIMESTAMP
-        DEFAULT
-        CURRENT_TIMESTAMP,
-        FOREIGN
-        KEY
-                 (
-        session_id
-                 ) REFERENCES exam_sessions
-                 (
-                     id
-                 ) ON DELETE CASCADE,
-        FOREIGN KEY
-                 (
-                     question_id
-                 ) REFERENCES questions
-                 (
-                     id
-                 )
-                   ON DELETE CASCADE
-        )''')
-
+    """初始化数据库，创建必要的表结构"""
+    conn = qs_module.get_db()
     conn.commit()
     conn.close()
 
 
 init_db()
-
-
-# ------------------ 辅助函数 ------------------
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 def to_beijing_time(time_str):
@@ -1142,6 +883,7 @@ def delete_exam_session(session_id):
 
 if __name__ == '__main__':
     print("✅ 模拟考试系统启动！")
-    print(f"🌐 访问地址: http://127.0.0.1:{args.port}")
-    print(f"📦 数据库路径: {DB_PATH}")
-    app.run(debug=True, host='0.0.0.0', port=args.port)
+    print(f"🌐 访问地址: http://127.0.0.1:{config.port}")
+    print(f"📦 数据库路径: {config.db_path}")
+    use_reloader = False if 'test' in config.db_path else config.debug
+    app.run(debug=config.debug, host='0.0.0.0', port=config.port, use_reloader=use_reloader)

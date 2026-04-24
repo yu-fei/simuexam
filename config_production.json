@@ -1,0 +1,5 @@
+{
+    "db_path": "exam_system.db",
+    "port": 8000,
+    "debug": false
+}
