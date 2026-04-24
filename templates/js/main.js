@@ -452,11 +452,13 @@ function renderExamContent() {
 
         html += `<div class="question-box" id="question-${q.id}"><strong style="font-size:16px;">${questionNumber}. ${q.content}</strong>`;
         if (isAnswered) html += ` <span style="color:#0f7b4e; font-size:13px; margin-left:8px;">✓ 已答</span>`;
-
-        html += `<div style="margin-top:8px;">
-            <button class="btn btn-sm" onclick="editQuestionInExam(${q.id})">编辑</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteQuestionInExam(${q.id})">删除</button>
-        </div>`;
+        html += `<div class="menu-container">
+                <button class="menu-button" onclick="toggleMenu(${q.id})")">...</button>
+                <div id="menu-${q.id}" class="menu-dropdown hidden">
+                    <button class="menu-item" onclick="editQuestionInExam(${q.id})")">编辑</button>
+                    <button class="menu-item delete" onclick="deleteQuestionInExam(${q.id})")">删除</button>
+                </div>
+            </div>`;
 
         if (q.type === 'judge') {
             html += `<div style="margin-top:16px;">
@@ -528,3 +530,24 @@ async function finishExam() {
     alert(`考试完成！\n共 ${currentQuestions.length} 题，已答 ${totalAnswered} 题，答对 ${correctCount} 题`);
     exitExam(false);
 }
+
+// 切换菜单显示/隐藏
+function toggleMenu(qid) {
+    const menu = document.getElementById(`menu-${qid}`);
+    if (menu) {
+        menu.classList.toggle('hidden');
+    }
+}
+
+// 点击页面其他地方关闭菜单
+document.addEventListener('click', function(event) {
+    const menuContainers = document.querySelectorAll('.menu-container');
+    menuContainers.forEach(container => {
+        if (!container.contains(event.target)) {
+            const menu = container.querySelector('.menu-dropdown');
+            if (menu) {
+                menu.classList.add('hidden');
+            }
+        }
+    });
+});
