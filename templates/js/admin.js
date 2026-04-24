@@ -10,21 +10,63 @@ async function loadSubjectQuestions(subjectId, subjectName) {
         currentSubjectQuestions = res.questions;
         currentViewingSubject = { id: subjectId, name: subjectName };
         questionListPage = 1;
-        showQuestionListPage(subjectName);
+
+        window.location.hash = `view/${subjectId}/${encodeURIComponent(subjectName)}`;
+        
+        // 使用面板管理器
+        if (typeof panelManager !== 'undefined' && panelManager) {
+            panelManager.showQuestionList();
+        } else {
+            // 备用：使用旧逻辑
+            document.getElementById('adminPanel').classList.add('hidden');
+            document.getElementById('questionListPanel').classList.remove('hidden');
+        }
+        
+        document.getElementById('questionListTitle').innerText = `📚 ${subjectName} - 试题列表`;
+        renderQuestionList();
+
+        // 恢复滚动位置
+        const savedScroll = localStorage.getItem(`questionListScroll_${subjectId}`);
+        if (savedScroll !== null) {
+            const scrollPercent = parseFloat(savedScroll);
+            setTimeout(() => {
+                const maxScroll = document.body.scrollHeight - window.innerHeight;
+                window.scrollTo(0, maxScroll * scrollPercent);
+            }, 100);
+        }
+    }
+}
+
+function saveQuestionListScroll() {
+    if (currentViewingSubject) {
+        const scrollPercent = window.scrollY / (document.body.scrollHeight - window.innerHeight);
+        localStorage.setItem(`questionListScroll_${currentViewingSubject.id}`, scrollPercent.toString());
     }
 }
 
 function showQuestionListPage(subjectName) {
-    document.getElementById('adminPanel').classList.add('hidden');
-    document.getElementById('questionListPanel').classList.remove('hidden');
+    // 此函数已被loadSubjectQuestions整合
     document.getElementById('questionListTitle').innerText = `📚 ${subjectName} - 试题列表`;
     renderQuestionList();
 }
 
 function backToAdmin() {
-    document.getElementById('questionListPanel').classList.add('hidden');
-    document.getElementById('adminPanel').classList.remove('hidden');
+    // 使用面板管理器
+    if (typeof panelManager !== 'undefined' && panelManager) {
+        panelManager.showAdmin();
+    } else {
+        // 备用：使用旧逻辑
+        document.getElementById('questionListPanel').classList.add('hidden');
+        document.getElementById('adminPanel').classList.remove('hidden');
+    }
     currentViewingSubject = null;
+    
+    // 使用状态管理器
+    if (typeof stateManager !== 'undefined' && stateManager) {
+        stateManager.updateState({ currentViewingSubject: null });
+    }
+    
+    window.location.hash = 'admin';
 }
 
 function renderQuestionList() {
@@ -79,7 +121,7 @@ function renderQuestionList() {
         }
         if (endPage < totalPages) {
             if (endPage < totalPages - 1) html += '<span style="padding:0 4px;">...</span>';
-            html += `<button class="btn btn-sm" onclick="goToQuestionPage(${totalPages})">${totalPages}</button>`;
+            html += `<button class="btn btn-sm" onclick="goToQuestionPage(${totalPages})"></button>`;
         }
 
         html += `<button class="btn btn-sm" onclick="goToQuestionPage(${questionListPage + 1})" ${questionListPage === totalPages ? 'disabled' : ''}>下一页 ›</button>`;

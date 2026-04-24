@@ -2,6 +2,7 @@ import os
 import re
 import sqlite3
 import json
+import argparse
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory, session
 from werkzeug.utils import secure_filename
@@ -1130,6 +1131,10 @@ def delete_exam_session(session_id):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='模拟考试系统')
+    parser.add_argument('--port', type=int, default=8000, help='服务器端口')
+    args = parser.parse_args()
+    
     print("✅ 模拟考试系统启动！")
-    print("🌐 访问地址: http://127.0.0.1:8000")
-    app.run(debug=True, host='0.0.0.0', port=8000)
+    print(f"🌐 访问地址: http://127.0.0.1:{args.port}")
+    app.run(debug=True, host='0.0.0.0', port=args.port)

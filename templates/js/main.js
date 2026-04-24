@@ -1,3 +1,8 @@
+// 引入路由管理器
+const script = document.createElement('script');
+script.src = '/static/js/router.js';
+document.head.appendChild(script);
+
 let currentUser = null;
 let currentQuestions = [];
 let userAnswers = {};
@@ -23,26 +28,37 @@ window.onload = async () => {
         document.getElementById('examUsernameDisplay').innerText = `👤 ${res.username}`;
         await loadSubjects();
         
-        // 如果直接访问 #exam-mode，自动恢复考试
-        const hash = window.location.hash.slice(1);
-        if (hash === 'exam-mode') {
-            const examRes = await api('/api/exam/in_progress');
-            if (examRes.success && examRes.session) {
-                await resumeExam(examRes.session.id);
+        // 初始化应用（使用新的路由管理器）
+        setTimeout(() => {
+            if (typeof initApp === 'function') {
+                initApp();
             } else {
-                // 如果没有进行中的考试，跳回考试设置页面
-                window.location.hash = 'exam';
-                handleHashChange();
+                // 备用：如果router.js加载失败，使用旧逻辑
+                const hash = window.location.hash.slice(1);
+                if (hash === 'exam-mode') {
+                    handleExamMode();
+                } else {
+                    handleHashChange();
+                }
             }
-        } else {
-            handleHashChange();
-        }
+        }, 100);
     } else {
         document.getElementById('loginPage').style.display = 'block';
         document.getElementById('mainApp').style.display = 'none';
     }
     onModeChange();
 };
+
+// 处理考试模式
+async function handleExamMode() {
+    const examRes = await api('/api/exam/in_progress');
+    if (examRes.success && examRes.session) {
+        await resumeExam(examRes.session.id);
+    } else {
+        window.location.hash = 'exam';
+        handleHashChange();
+    }
+}
 
 // 监听滚动事件，保存滚动位置
 window.addEventListener('scroll', () => {
@@ -51,12 +67,25 @@ window.addEventListener('scroll', () => {
     }
 });
 
-window.addEventListener('hashchange', handleHashChange);
-
+// 旧的hash处理函数（备用）
 function handleHashChange() {
     const hash = window.location.hash.slice(1) || 'exam';
 
     if (isExamMode || hash === 'exam-mode') return;
+
+    if (hash.startsWith('view/')) {
+        const parts = hash.split('/');
+        if (parts.length >= 3) {
+            const subjectId = parts[1];
+            const subjectName = decodeURIComponent(parts.slice(2).join('/'));
+
+            if (currentUser && document.getElementById('adminPanel')) {
+                document.getElementById('adminPanel').classList.add('hidden');
+                loadSubjectQuestions(subjectId, subjectName);
+            }
+        }
+        return;
+    }
 
     if (hash === 'exam' || hash === 'history' || hash === 'admin') {
         switchTab(hash);
@@ -153,7 +182,12 @@ async function handleLogin() {
         document.getElementById('usernameDisplay').innerText = `👤 ${res.username}`;
         document.getElementById('examUsernameDisplay').innerText = `👤 ${res.username}`;
         await loadSubjects();
-        handleHashChange();
+        // 使用新的路由管理器
+        if (typeof initApp === 'function') {
+            initApp();
+        } else {
+            handleHashChange();
+        }
         onModeChange();
     } else alert(res.message);
 }
@@ -171,9 +205,16 @@ function switchTab(tabId) {
     if (isExamMode) return;
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
-    document.getElementById('examPanel').classList.toggle('hidden', tabId !== 'exam');
-    document.getElementById('historyPanel').classList.toggle('hidden', tabId !== 'history');
-    document.getElementById('adminPanel').classList.toggle('hidden', tabId !== 'admin');
+    
+    // 使用面板管理器
+    if (typeof panelManager !== 'undefined' && panelManager) {
+        panelManager.showPanel(tabId);
+    } else {
+        // 备用：使用旧逻辑
+        document.getElementById('examPanel').classList.toggle('hidden', tabId !== 'exam');
+        document.getElementById('historyPanel').classList.toggle('hidden', tabId !== 'history');
+        document.getElementById('adminPanel').classList.toggle('hidden', tabId !== 'admin');
+    }
 
     if (tabId === 'admin') {
         document.getElementById('examSettings').style.display = 'none';
