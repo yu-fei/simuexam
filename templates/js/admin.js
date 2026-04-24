@@ -1,15 +1,15 @@
 let currentSubjectQuestions = [];
 let currentEditingQuestion = null;
 let currentViewingSubject = null;
-let currentPage = 1;
-const pageSize = 50;
+let questionListPage = 1;
+const questionListPageSize = 50;
 
 async function loadSubjectQuestions(subjectId, subjectName) {
     const res = await getQuestionsBySubject(subjectId);
     if (res.success) {
         currentSubjectQuestions = res.questions;
         currentViewingSubject = { id: subjectId, name: subjectName };
-        currentPage = 1;
+        questionListPage = 1;
         showQuestionListPage(subjectName);
     }
 }
@@ -36,9 +36,9 @@ function renderQuestionList() {
         return;
     }
 
-    const totalPages = Math.ceil(currentSubjectQuestions.length / pageSize);
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = Math.min(startIndex + pageSize, currentSubjectQuestions.length);
+    const totalPages = Math.ceil(currentSubjectQuestions.length / questionListPageSize);
+    const startIndex = (questionListPage - 1) * questionListPageSize;
+    const endIndex = Math.min(startIndex + questionListPageSize, currentSubjectQuestions.length);
     const pageQuestions = currentSubjectQuestions.slice(startIndex, endIndex);
 
     let html = '<div class="question-list">';
@@ -59,41 +59,40 @@ function renderQuestionList() {
         </div>`;
     });
     html += '</div>';
-    
-    // 添加分页控件
+
     if (totalPages > 1) {
         html += '<div class="pagination">';
         html += `<span class="page-info">${startIndex + 1}-${endIndex} / 共 ${currentSubjectQuestions.length} 题</span>`;
-        html += `<button class="btn btn-sm" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹ 上一页</button>`;
-        
+        html += `<button class="btn btn-sm" onclick="goToQuestionPage(${questionListPage - 1})" ${questionListPage === 1 ? 'disabled' : ''}>‹ 上一页</button>`;
+
         const maxVisible = 5;
-        let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+        let startPage = Math.max(1, questionListPage - Math.floor(maxVisible / 2));
         let endPage = Math.min(totalPages, startPage + maxVisible - 1);
         if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
-        
+
         if (startPage > 1) {
-            html += `<button class="btn btn-sm" onclick="goToPage(1)">1</button>`;
+            html += `<button class="btn btn-sm" onclick="goToQuestionPage(1)">1</button>`;
             if (startPage > 2) html += '<span style="padding:0 4px;">...</span>';
         }
         for (let i = startPage; i <= endPage; i++) {
-            html += i === currentPage ? `<button class="btn btn-primary btn-sm" disabled>${i}</button>` : `<button class="btn btn-sm" onclick="goToPage(${i})">${i}</button>`;
+            html += i === questionListPage ? `<button class="btn btn-primary btn-sm" disabled>${i}</button>` : `<button class="btn btn-sm" onclick="goToQuestionPage(${i})">${i}</button>`;
         }
         if (endPage < totalPages) {
             if (endPage < totalPages - 1) html += '<span style="padding:0 4px;">...</span>';
-            html += `<button class="btn btn-sm" onclick="goToPage(${totalPages})">${totalPages}</button>`;
+            html += `<button class="btn btn-sm" onclick="goToQuestionPage(${totalPages})">${totalPages}</button>`;
         }
-        
-        html += `<button class="btn btn-sm" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>下一页 ›</button>`;
+
+        html += `<button class="btn btn-sm" onclick="goToQuestionPage(${questionListPage + 1})" ${questionListPage === totalPages ? 'disabled' : ''}>下一页 ›</button>`;
         html += '</div>';
     }
-    
+
     container.innerHTML = html;
 }
 
-function goToPage(page) {
-    const totalPages = Math.ceil(currentSubjectQuestions.length / pageSize);
+function goToQuestionPage(page) {
+    const totalPages = Math.ceil(currentSubjectQuestions.length / questionListPageSize);
     if (page < 1 || page > totalPages) return;
-    currentPage = page;
+    questionListPage = page;
     renderQuestionList();
 }
 
@@ -114,7 +113,7 @@ async function editQuestion(questionId) {
         return;
     }
     currentEditingQuestion = res.question;
-    
+
     document.getElementById('reimportModalTitle').innerText = '编辑题目';
     const txt = questionToTxt(res.question);
     document.getElementById('reimportContent').value = txt;
@@ -165,7 +164,6 @@ async function confirmReimport() {
     } else if (currentEditingQuestion) {
         saveRes = await updateQuestion(currentEditingQuestion.id, data);
     } else {
-        // 使用当前查看的科目
         if (!currentViewingSubject) {
             alert('请先选择科目');
             return;
@@ -184,8 +182,7 @@ async function confirmReimport() {
                     options: question.type === 'judge' ? ['正确', '错误'] : question.options,
                     correct_answer: question.correct
                 };
-                
-                // 重新计算已提交答案的正确性
+
                 if (typeof answerResults !== 'undefined' && answerResults[window.currentEditingExamQuestion.id]) {
                     const userAnswer = userAnswers[window.currentEditingExamQuestion.id];
                     if (userAnswer) {
@@ -203,7 +200,6 @@ async function confirmReimport() {
             }
         } else {
             closeReimportModal();
-            // 刷新当前科目列表
             if (currentViewingSubject) {
                 loadSubjectQuestions(currentViewingSubject.id, currentViewingSubject.name);
             }
@@ -219,7 +215,6 @@ async function removeQuestion(questionId) {
     const res = await deleteQuestion(questionId);
     if (res.success) {
         alert('题目已删除');
-        // 刷新当前科目列表
         if (currentViewingSubject) {
             loadSubjectQuestions(currentViewingSubject.id, currentViewingSubject.name);
         }
