@@ -62,7 +62,10 @@ class Router {
             this.routes[route].call(this, params);
             this.state.activeTab = route === 'view' ? 'admin' : route;
             this.saveState();
-            this.restoreScrollPosition();
+            // 对于view路由，不在这里恢复滚动位置，因为handleView会处理
+            if (route !== 'view') {
+                this.restoreScrollPosition();
+            }
         }
     }
 
@@ -293,8 +296,13 @@ function loadSubjectQuestions(subjectId, subjectName) {
 
 function saveQuestionListScroll() {
     if (currentViewingSubject) {
-        const scrollPercent = window.scrollY / (document.body.scrollHeight - window.innerHeight);
-        localStorage.setItem(`questionListScroll_${currentViewingSubject.id}`, scrollPercent.toString());
+        const maxScroll = document.body.scrollHeight - window.innerHeight;
+        if (maxScroll > 0) {
+            const scrollPercent = window.scrollY / maxScroll;
+            // 确保滚动百分比在0-1之间
+            const clampedScrollPercent = Math.max(0, Math.min(1, scrollPercent));
+            localStorage.setItem(`questionListScroll_${currentViewingSubject.id}`, clampedScrollPercent.toString());
+        }
     }
 }
 
